@@ -359,11 +359,12 @@ fn cmd_type(args: &[String], explicit_config: Option<&Path>) -> Result<(), Strin
     }
 
     let score = engine.token_score();
+    let decision = engine.token_decision();
     println!();
     println!("FINAL");
     println!("layout: {}", layout_label(&engine, engine.current_layout()));
     print_score_lines(&engine, &score);
-    print_margin_line(&engine, &score, engine.config());
+    print_margin_line(&engine, &score, engine.config(), decision);
     Ok(())
 }
 
@@ -1366,6 +1367,7 @@ fn redraw(
     stdout.execute(cursor::MoveTo(0, 0))?;
 
     let score = engine.token_score();
+    let decision = engine.token_decision();
     let candidates = engine.token_candidates();
 
     let mut buf = String::new();
@@ -1418,7 +1420,7 @@ fn redraw(
     );
     let _ = writeln_cr(&mut buf, "");
 
-    let verdict = format_margin_verdict(engine, &score, engine.config());
+    let verdict = format_margin_verdict(engine, &score, engine.config(), decision);
     let _ = writeln_cr(
         &mut buf,
         format!(
@@ -1501,16 +1503,26 @@ fn score_label(engine: &Engine, layout: Layout) -> String {
     token_label(engine, layout).to_ascii_uppercase()
 }
 
-fn print_margin_line(engine: &Engine, score: &ScoreAnalysis, config: &EngineConfig) {
+fn print_margin_line(
+    engine: &Engine,
+    score: &ScoreAnalysis,
+    config: &EngineConfig,
+    decision: Decision,
+) {
     println!(
         "Margin ({} - {}): {}",
         score_label(engine, Layout::English),
         score_label(engine, Layout::Secondary),
-        format_margin_verdict(engine, score, config)
+        format_margin_verdict(engine, score, config, decision)
     );
 }
 
-fn format_margin_verdict(engine: &Engine, score: &ScoreAnalysis, config: &EngineConfig) -> String {
+fn format_margin_verdict(
+    engine: &Engine,
+    score: &ScoreAnalysis,
+    config: &EngineConfig,
+    decision: Decision,
+) -> String {
     let margin = score.english.total - score.secondary.total;
     let (threshold, threshold_label) = if margin >= 0.0 {
         margin_threshold(score.english, config)
@@ -1518,27 +1530,22 @@ fn format_margin_verdict(engine: &Engine, score: &ScoreAnalysis, config: &Engine
         margin_threshold(score.secondary, config)
     };
 
-    if margin.abs() < threshold {
-        format!(
+    match decision {
+        Decision::Keep => format!(
             "{:+.2}  threshold={:.2} ({})  -> keep current",
             margin, threshold, threshold_label
-        )
-    } else if margin > 0.0 {
-        format!(
+        ),
+        Decision::Bypass => format!(
+            "{:+.2}  threshold={:.2} ({})  -> bypass",
+            margin, threshold, threshold_label
+        ),
+        Decision::Use(layout) => format!(
             "{:+.2}  threshold={:.2} ({})  -> Use({})",
             margin,
             threshold,
             threshold_label,
-            layout_label(engine, Layout::English)
-        )
-    } else {
-        format!(
-            "{:+.2}  threshold={:.2} ({})  -> Use({})",
-            margin,
-            threshold,
-            threshold_label,
-            layout_label(engine, Layout::Secondary)
-        )
+            layout_label(engine, layout)
+        ),
     }
 }
 

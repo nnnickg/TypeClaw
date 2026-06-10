@@ -13,6 +13,7 @@ pub struct Engine {
     token: Vec<LetterEvent>,
     candidates: LayoutCandidates,
     ngrams: LayoutNgrams,
+    english_punctuation_letter_key_count: usize,
     score_cache: Option<ScoreAnalysis>,
     layout: Layout,
     token_start_layout: Layout,
@@ -125,6 +126,7 @@ impl Engine {
                 secondary: String::with_capacity(token_capacity * 4),
             },
             ngrams: LayoutNgrams::default(),
+            english_punctuation_letter_key_count: 0,
             score_cache: None,
             layout: Layout::English,
             token_start_layout: Layout::English,
@@ -157,11 +159,17 @@ impl Engine {
         self.score_current()
     }
 
+    pub fn token_decision(&mut self) -> Decision {
+        let score = self.score_current();
+        self.decide(&score)
+    }
+
     pub fn reset_token(&mut self) {
         self.token.clear();
         self.candidates.english.clear();
         self.candidates.secondary.clear();
         self.ngrams.clear();
+        self.english_punctuation_letter_key_count = 0;
         self.score_cache = None;
         self.bypass_until_boundary = false;
         self.token_start_layout = self.layout;
@@ -173,6 +181,7 @@ impl Engine {
         self.candidates.english.clear();
         self.candidates.secondary.clear();
         self.ngrams.clear();
+        self.english_punctuation_letter_key_count = 0;
         self.score_cache = None;
         self.bypass_until_boundary = false;
         self.token_start_layout = layout;
@@ -327,7 +336,13 @@ impl Engine {
             return (ObservationAction::None, Decision::Bypass);
         }
 
-        self.token.pop();
+        let Some(event) = self.token.pop() else {
+            return (ObservationAction::None, Decision::Bypass);
+        };
+        if self.is_english_punctuation_letter_key(event) {
+            self.english_punctuation_letter_key_count =
+                self.english_punctuation_letter_key_count.saturating_sub(1);
+        }
         self.candidates.english.pop();
         self.candidates.secondary.pop();
         self.ngrams.pop();
@@ -402,7 +417,19 @@ impl Engine {
             Layout::Secondary => score.secondary,
         };
         let margin = score.margin_for(layout);
-        let threshold = if has_dictionary_evidence(layout_score) {
+        let dictionary_evidence = has_dictionary_evidence(layout_score);
+        // Primary-side punctuation-position keys make n-gram-only comparison
+        // asymmetric: English scores punctuation while the secondary side scores
+        // a letter on the same physical key. Require current-token dictionary
+        // evidence before crossing into secondary from that ambiguous state.
+        if layout == Layout::Secondary
+            && self.english_punctuation_letter_key_count > 0
+            && !dictionary_evidence
+        {
+            return false;
+        }
+
+        let threshold = if dictionary_evidence {
             self.config.confidence_margin
         } else {
             self.config.ngram_only_confidence_margin
@@ -443,6 +470,10 @@ impl Engine {
 
     fn is_english_punctuation_letter_key(&self, event: LetterEvent) -> bool {
         let english = self.bundle.render(event, Layout::English);
+        self.is_english_punctuation_letter_char(english)
+    }
+
+    fn is_english_punctuation_letter_char(&self, english: char) -> bool {
         self.bundle
             .secondary
             .punctuation_letter_keys
@@ -479,6 +510,9 @@ impl Engine {
     fn push_candidate_chars(&mut self, event: LetterEvent) {
         let english = self.bundle.render(event, Layout::English);
         let secondary = self.bundle.render(event, Layout::Secondary);
+        if self.is_english_punctuation_letter_char(english) {
+            self.english_punctuation_letter_key_count += 1;
+        }
         self.ngrams
             .english
             .push(&self.bundle.pack(Layout::English).model, english);

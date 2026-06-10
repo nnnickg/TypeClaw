@@ -22,6 +22,7 @@ mod tests {
     use super::{
         Decision, Engine, EngineConfig, EngineConfigError, HostContext, InputEvent, KeyboardMap,
         Layout, LetterEvent, MAX_CONFIG_TOKEN_LEN, ObservationAction, PhysicalKey, ScoreAnalysis,
+        has_dictionary_evidence,
     };
     use crate::data::LanguageBundle;
     use proptest::prelude::*;
@@ -248,6 +249,39 @@ mod tests {
         assert_eq!(engine.token_candidates().secondary, "баба");
         assert_eq!(engine.current_layout(), Layout::Secondary);
         assert!(saw_secondary_switch);
+    }
+
+    #[test]
+    fn english_punctuation_key_blocks_secondary_ngram_only_switch() {
+        let mut engine = Engine::new(
+            EngineConfig::default(),
+            LanguageBundle::for_testing(
+                &[("ill", 1000), ("input", 500), ("token", 300)],
+                &[("шєда", 5000), ("аєдд", 5000)],
+            ),
+        );
+        let mut final_action = ObservationAction::None;
+        let mut final_decision = Decision::Keep;
+        let mut final_score = None;
+
+        for character in "i'll".chars() {
+            let input = input_event_for_char(&engine, character);
+            let output = engine.observe(input);
+            final_action = output.action.clone();
+            final_decision = output.decision;
+            final_score = Some(output.score);
+        }
+
+        let score = final_score.unwrap();
+        assert_eq!(engine.token_candidates().english, "i'll");
+        assert_eq!(engine.token_candidates().secondary, "шєдд");
+        assert!(
+            score.margin_for(Layout::Secondary) >= engine.config().ngram_only_confidence_margin
+        );
+        assert!(!has_dictionary_evidence(score.secondary));
+        assert_eq!(final_action, ObservationAction::None);
+        assert_eq!(final_decision, Decision::Keep);
+        assert_eq!(engine.current_layout(), Layout::English);
     }
 
     #[test]
