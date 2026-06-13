@@ -238,14 +238,9 @@ build, and release CLI smoke for every push to `main` and every pull request.
 
 ## License
 
-Code is licensed under either of:
-
-- Apache License, Version 2.0
-- MIT license
-
-at your option.
+Code is licensed under the MIT license.
 
 The embedded language-model artifacts are generated from third-party corpora
-and frequency lists. They are data artifacts, not MIT/Apache source code. See
+and frequency lists. They are data artifacts, not MIT source code. See
 [`DATA-LICENSE.md`](DATA-LICENSE.md) and [`NOTICE.md`](NOTICE.md) for
 redistribution terms and attribution.

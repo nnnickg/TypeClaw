@@ -145,6 +145,8 @@ Expected:
 
 - `macos/build/release/TypeClaw.app/Contents/MacOS/TypeClaw` verifies both
   `arm64` and `x86_64` with `lipo -verify_arch`.
+- `macos/build/release/TypeClaw.app/Contents/Resources/Legal/` contains
+  `LICENSE-MIT`, `NOTICE.md`, `DATA-LICENSE.md`, and `README.md`.
 - `codesign --verify --strict` passes for the ad-hoc signature.
 - `CFBundleVersion` is set to `<major version>.<git commit count>` and must not
   be `1`.

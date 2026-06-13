@@ -1,11 +1,11 @@
 # Notice
 
-TypeClaw source code is licensed under `MIT OR Apache-2.0`.
+TypeClaw source code is licensed under the MIT license.
 
 The embedded language-model artifacts in `crates/typeclaw-core/data/` are
 generated statistical artifacts derived from third-party text data. They are
 not original TypeClaw source code and are not covered by the source-code
-MIT/Apache license grant. See `DATA-LICENSE.md` for redistribution notes.
+MIT license grant. See `DATA-LICENSE.md` for redistribution notes.
 
 ## Embedded Data Sources
 

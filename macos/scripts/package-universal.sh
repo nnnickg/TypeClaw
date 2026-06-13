@@ -25,6 +25,7 @@ info_plist="$macos_dir/Resources/Info.plist"
 info_plist_strings="$macos_dir/Resources/en.lproj/InfoPlist.strings"
 pkginfo="$macos_dir/Resources/PkgInfo"
 icon_source="$macos_dir/Resources/TypeClaw.png"
+legal_resources_dir="$app_bundle/Contents/Resources/Legal"
 
 kit_sources=("$macos_dir"/Sources/TypeClawKit/*.swift)
 agent_sources=("${kit_sources[@]}" "$macos_dir"/Sources/TypeClawAgent/*.swift)
@@ -78,7 +79,7 @@ build_swift_executable() {
 
 copy_bundle_resources() {
     rm -rf "$app_bundle"
-    mkdir -p "$app_bundle/Contents/MacOS" "$app_bundle/Contents/Resources/en.lproj"
+    mkdir -p "$app_bundle/Contents/MacOS" "$app_bundle/Contents/Resources/en.lproj" "$legal_resources_dir"
     cp "$info_plist" "$app_bundle/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $typeclaw_version" "$app_bundle/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $typeclaw_bundle_version" "$app_bundle/Contents/Info.plist"
@@ -88,6 +89,7 @@ copy_bundle_resources() {
     fi
     cp "$info_plist_strings" "$app_bundle/Contents/Resources/en.lproj/InfoPlist.strings"
     cp "$pkginfo" "$app_bundle/Contents/PkgInfo"
+    cp "$root_dir/LICENSE-MIT" "$root_dir/NOTICE.md" "$root_dir/DATA-LICENSE.md" "$root_dir/README.md" "$legal_resources_dir/"
     plutil -lint "$app_bundle/Contents/Info.plist"
 }
 

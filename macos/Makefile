@@ -35,6 +35,7 @@ APP_INFO_PLIST := Resources/Info.plist
 APP_PKGINFO := Resources/PkgInfo
 APP_INFO_PLIST_STRINGS := Resources/en.lproj/InfoPlist.strings
 ICON_SOURCE := Resources/TypeClaw.png
+LEGAL_RESOURCES_DIR := $(APP_BUNDLE)/Contents/Resources/Legal
 ICON_TIFF_DIR := $(BUILD_DIR)/$(APP_NAME)-icon-tiffs
 ICON_MULTI_TIFF := $(BUILD_DIR)/$(APP_NAME)-icons.tiff
 APP_ICON_ICNS := $(APP_BUNDLE)/Contents/Resources/TypeClaw.icns
@@ -80,13 +81,14 @@ check-adhoc-codesign:
 	@test "$(CODESIGN_IDENTITY)" = "-" || { echo "error: TypeClaw packaging is ad-hoc only; set CODESIGN_IDENTITY=-" >&2; exit 2; }
 
 $(APP_EXECUTABLE): $(AGENT_SOURCES) $(APP_INFO_PLIST) $(APP_INFO_PLIST_STRINGS) $(APP_PKGINFO) $(APP_ICONS) TypeClawFFI/include/module.modulemap TypeClawFFI/include/typeclaw_shim.h rust-staticlib
-	mkdir -p $(APP_BUNDLE)/Contents/MacOS $(APP_BUNDLE)/Contents/Resources/en.lproj $(MODULE_CACHE_DIR)
+	mkdir -p $(APP_BUNDLE)/Contents/MacOS $(APP_BUNDLE)/Contents/Resources/en.lproj $(LEGAL_RESOURCES_DIR) $(MODULE_CACHE_DIR)
 	cp $(APP_INFO_PLIST) $(APP_BUNDLE)/Contents/Info.plist
 	$(PLISTBUDDY) -c "Set :CFBundleShortVersionString $(TYPECLAW_VERSION)" $(APP_BUNDLE)/Contents/Info.plist
 	$(PLISTBUDDY) -c "Set :CFBundleVersion $(TYPECLAW_BUNDLE_VERSION)" $(APP_BUNDLE)/Contents/Info.plist
 	@test "$(TYPECLAW_BUNDLE_VERSION)" != "1" || { echo "error: refusing CFBundleVersion=1" >&2; exit 1; }
 	cp $(APP_INFO_PLIST_STRINGS) $(APP_BUNDLE)/Contents/Resources/en.lproj/InfoPlist.strings
 	cp $(APP_PKGINFO) $(APP_BUNDLE)/Contents/PkgInfo
+	cp $(ROOT_DIR)/LICENSE-MIT $(ROOT_DIR)/NOTICE.md $(ROOT_DIR)/DATA-LICENSE.md $(ROOT_DIR)/README.md $(LEGAL_RESOURCES_DIR)/
 	plutil -lint $(APP_BUNDLE)/Contents/Info.plist
 	$(SWIFTC) $(SWIFT_COMMON_FLAGS) $(AGENT_SOURCES) $(RUST_LINK_FLAGS) $(AGENT_FRAMEWORK_FLAGS) -o $(APP_EXECUTABLE)
 

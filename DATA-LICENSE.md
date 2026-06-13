@@ -1,10 +1,10 @@
 # Data License
 
-TypeClaw source code is licensed under `MIT OR Apache-2.0`.
+TypeClaw source code is licensed under the MIT license.
 
 This file covers the generated language-model artifacts and any external packs
 built with TypeClaw tooling. Those files are data artifacts, not TypeClaw source
-code, and must not be treated as MIT/Apache-licensed code.
+code, and must not be treated as MIT-licensed code.
 
 ## Checked-In Model Artifacts
 
@@ -29,9 +29,9 @@ their inputs. In particular, `hermitdave/FrequencyWords` documents its generated
 content as `CC-BY-SA-4.0`.
 
 Treat the checked-in model artifacts as third-party-derived data with
-attribution and share-alike obligations, not as MIT/Apache source code. If you
-need a MIT/Apache-only distribution, rebuild the artifacts from inputs whose
-terms allow that distribution and do not include these checked-in files.
+attribution and share-alike obligations, not as MIT source code. If you need a
+distribution whose data is also MIT-compatible, rebuild the artifacts from inputs
+whose terms allow that distribution and do not include these checked-in files.
 
 Source attribution and citation details are listed in `NOTICE.md`.
 

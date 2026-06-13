@@ -78,7 +78,7 @@ it is missing, the loader derives the set from the pack keyboard map.
 
 ## Artifact Licensing
 
-Embedded artifacts and external packs are generated data, not MIT/Apache source
+Embedded artifacts and external packs are generated data, not MIT source
 code. The checked-in embedded artifacts are derived from OPUS OpenSubtitles2018
 and `hermitdave/FrequencyWords`; see `../DATA-LICENSE.md` and `../NOTICE.md`
 for attribution and redistribution notes.
