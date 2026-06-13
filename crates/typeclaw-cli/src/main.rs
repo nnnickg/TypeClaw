@@ -984,6 +984,7 @@ fn install_pack(source_dir: &Path, explicit_config: Option<&Path>) -> Result<(),
     let source_config = load_config(explicit_config)?;
     let install_root = pack_dir_or_error(&source_config.config)?;
     reject_symlink(source_dir, "pack directory")?;
+    prepare_install_root(&install_root)?;
 
     let manifest = LanguagePackManifest::read_from_dir(source_dir)
         .map_err(|e| format!("read pack {}: {e}", source_dir.display()))?;
@@ -994,15 +995,27 @@ fn install_pack(source_dir: &Path, explicit_config: Option<&Path>) -> Result<(),
         .map_err(|e| format!("resolve pack artifacts: {e}"))?;
 
     let target_dir = install_root.join(&pack.id);
-    fs::create_dir_all(&target_dir).map_err(|e| format!("create {}: {e}", target_dir.display()))?;
-    copy_pack_file(&ngrams_src, &target_dir.join(PACK_NGRAMS_FILE))?;
-    copy_pack_file(&dict_src, &target_dir.join(PACK_DICT_FILE))?;
-    copy_pack_file(&dict_prefix_src, &target_dir.join(PACK_DICT_PREFIX_FILE))?;
-    let mut installed_manifest = manifest.normalized_for_install();
-    if installed_manifest.punctuation_letter_keys.is_empty() {
-        installed_manifest.punctuation_letter_keys = pack.punctuation_letter_keys.clone();
+    reject_existing_symlink(&target_dir, "installed pack directory")?;
+    let temp_dir = create_pack_temp_dir(&install_root, &pack.id, "install")?;
+    let install_result = (|| {
+        copy_pack_file(&ngrams_src, &temp_dir.join(PACK_NGRAMS_FILE))?;
+        copy_pack_file(&dict_src, &temp_dir.join(PACK_DICT_FILE))?;
+        copy_pack_file(&dict_prefix_src, &temp_dir.join(PACK_DICT_PREFIX_FILE))?;
+        let mut installed_manifest = manifest.normalized_for_install();
+        if installed_manifest.punctuation_letter_keys.is_empty() {
+            installed_manifest.punctuation_letter_keys = pack.punctuation_letter_keys.clone();
+        }
+        write_pack_manifest(&installed_manifest, &temp_dir)?;
+
+        LanguagePack::from_pack_dir(&temp_dir)
+            .map_err(|e| format!("validate staged pack {}: {e}", temp_dir.display()))?;
+        commit_pack_dir(&temp_dir, &target_dir)
+    })();
+
+    if let Err(error) = install_result {
+        let _ = fs::remove_dir_all(&temp_dir);
+        return Err(error);
     }
-    write_pack_manifest(&installed_manifest, &target_dir)?;
 
     let installed = LanguagePack::from_pack_dir(&target_dir)
         .map_err(|e| format!("validate installed pack {}: {e}", target_dir.display()))?;
@@ -1134,6 +1147,99 @@ fn pack_dir_or_error(config: &Config) -> Result<PathBuf, String> {
     })
 }
 
+fn prepare_install_root(path: &Path) -> Result<(), String> {
+    reject_existing_symlink(path, "pack install root")?;
+    if path.exists() {
+        if !path.is_dir() {
+            return Err(format!(
+                "pack install root exists and is not a directory: {}",
+                path.display()
+            ));
+        }
+        return Ok(());
+    }
+
+    fs::create_dir_all(path).map_err(|e| format!("create {}: {e}", path.display()))?;
+    reject_existing_symlink(path, "pack install root")
+}
+
+fn create_pack_temp_dir(parent: &Path, pack_id: &str, role: &str) -> Result<PathBuf, String> {
+    for attempt in 0..100 {
+        let path = parent.join(format!(
+            ".{pack_id}.{role}.{}.{}.tmp",
+            std::process::id(),
+            attempt
+        ));
+        match fs::create_dir(&path) {
+            Ok(()) => return Ok(path),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(format!("create {}: {error}", path.display())),
+        }
+    }
+
+    Err(format!(
+        "could not create temporary pack directory for {pack_id} after 100 attempts"
+    ))
+}
+
+fn commit_pack_dir(temp_dir: &Path, target_dir: &Path) -> Result<(), String> {
+    reject_existing_symlink(target_dir, "installed pack directory")?;
+    if !target_dir.exists() {
+        fs::rename(temp_dir, target_dir).map_err(|e| {
+            format!(
+                "rename {} -> {}: {e}",
+                temp_dir.display(),
+                target_dir.display()
+            )
+        })?;
+        return Ok(());
+    }
+
+    if !target_dir.is_dir() {
+        return Err(format!(
+            "installed pack path exists and is not a directory: {}",
+            target_dir.display()
+        ));
+    }
+
+    let parent = target_dir.parent().unwrap_or_else(|| Path::new("."));
+    let pack_id = target_dir
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .unwrap_or_else(|| target_dir.as_os_str().to_string_lossy());
+    let backup_dir = create_pack_temp_dir(parent, &pack_id, "backup")?;
+    fs::remove_dir(&backup_dir).map_err(|e| format!("remove {}: {e}", backup_dir.display()))?;
+
+    fs::rename(target_dir, &backup_dir).map_err(|e| {
+        format!(
+            "rename {} -> {}: {e}",
+            target_dir.display(),
+            backup_dir.display()
+        )
+    })?;
+
+    if let Err(error) = fs::rename(temp_dir, target_dir) {
+        let restore_result = fs::rename(&backup_dir, target_dir);
+        return match restore_result {
+            Ok(()) => Err(format!(
+                "rename {} -> {}: {error}",
+                temp_dir.display(),
+                target_dir.display()
+            )),
+            Err(restore_error) => Err(format!(
+                "rename {} -> {}: {error}; restore {} -> {} failed: {restore_error}",
+                temp_dir.display(),
+                target_dir.display(),
+                backup_dir.display(),
+                target_dir.display()
+            )),
+        };
+    }
+
+    fs::remove_dir_all(&backup_dir).map_err(|e| format!("remove {}: {e}", backup_dir.display()))?;
+    Ok(())
+}
+
 fn writable_config_path(explicit_config: Option<&Path>) -> Result<PathBuf, String> {
     explicit_config
         .map(Path::to_path_buf)
@@ -1187,6 +1293,17 @@ fn reject_symlink(path: &Path, label: &str) -> Result<(), String> {
         return Err(format!("{label} must not be a symlink: {}", path.display()));
     }
     Ok(())
+}
+
+fn reject_existing_symlink(path: &Path, label: &str) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            Err(format!("{label} must not be a symlink: {}", path.display()))
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("stat {label} {}: {error}", path.display())),
+    }
 }
 
 fn write_pack_manifest(manifest: &LanguagePackManifest, target_dir: &Path) -> Result<(), String> {

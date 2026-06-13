@@ -9,8 +9,8 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-typeclaw-core = { path = "../crates/typeclaw-core", version = "1.2.2" }
-typeclaw-ffi = { path = "../crates/typeclaw-ffi", version = "1.2.2" }
+typeclaw-core = { path = "../crates/typeclaw-core", version = "1.2.4" }
+typeclaw-ffi = { path = "../crates/typeclaw-ffi", version = "1.2.4" }
 
 [[bin]]
 name = "artifact_decoders"

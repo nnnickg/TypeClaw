@@ -94,9 +94,6 @@ func verifyHostConfigPrecedence() throws {
     [packs]
     directory = "/config/packs"
 
-    [data]
-    directory = "/config/data"
-
     [apps]
     disable_bundle_ids = [
         "dev.zed.Zed",
@@ -117,14 +114,10 @@ func verifyHostConfigPrecedence() throws {
         "HOME": root.path,
         "TYPECLAW_CONFIG": configPath.path,
         "TYPECLAW_PACK_DIR": "/env/packs",
-        "TYPECLAW_DATA_DIR": "/env/data",
     ])
 
     guard config.packDirectory == "/env/packs" else {
         throw SmokeError.wrongPackDirectory(config.packDirectory)
-    }
-    guard config.dataDirectory == "/env/data" else {
-        throw SmokeError.wrongDataDirectory(config.dataDirectory)
     }
     guard config.secondaryLanguage == "pl" else {
         throw SmokeError.wrongSecondaryLanguage(config.secondaryLanguage)
@@ -202,6 +195,43 @@ func verifyHostConfigPrecedence() throws {
         throw SmokeError.wrongAppPolicy(
             "autoDisabled policy=\(autoDisabledPolicy.reasonDescription)"
         )
+    }
+}
+
+func verifyDataDirectoryPrecedenceForEmbeddedUkrainian() throws {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+        .appendingPathComponent("typeclaw-smoke-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString)")
+    let configPath = root
+        .appendingPathComponent(".config")
+        .appendingPathComponent("typeclaw")
+        .appendingPathComponent("config.toml")
+    try FileManager.default.createDirectory(
+        at: configPath.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    defer {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    try """
+    [language]
+    secondary = "uk"
+
+    [data]
+    directory = "/config/data"
+    """.write(to: configPath, atomically: true, encoding: .utf8)
+
+    let config = try TypeClawHostConfig.load(environment: [
+        "HOME": root.path,
+        "TYPECLAW_CONFIG": configPath.path,
+        "TYPECLAW_DATA_DIR": "/env/data",
+    ])
+
+    guard config.dataDirectory == "/env/data" else {
+        throw SmokeError.wrongDataDirectory(config.dataDirectory)
+    }
+    guard config.secondaryLanguage == "uk" else {
+        throw SmokeError.wrongSecondaryLanguage(config.secondaryLanguage)
     }
 }
 
@@ -285,6 +315,7 @@ do {
         throw SmokeError.wrongDefaultMaxTokenLen(config.max_token_len)
     }
     try verifyHostConfigPrecedence()
+    try verifyDataDirectoryPrecedenceForEmbeddedUkrainian()
     try verifyMissingDefaultHostConfigUsesDefaults()
     try verifyAutoDisabledManualLayoutMode()
     try verifyManualSwitchChangesFutureLayoutOnly()

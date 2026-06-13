@@ -50,6 +50,9 @@ pub enum NgramDecodeError {
         len: usize,
         max: usize,
     },
+    InvalidFloat {
+        field: &'static str,
+    },
     TrailingBytes {
         read: usize,
         total: usize,
@@ -71,6 +74,12 @@ impl std::fmt::Display for NgramDecodeError {
                 f,
                 "n-gram artifact field '{field}' is too large: {len} bytes/items, max {max}"
             ),
+            NgramDecodeError::InvalidFloat { field } => {
+                write!(
+                    f,
+                    "n-gram artifact field '{field}' contains a non-finite float"
+                )
+            }
             NgramDecodeError::TrailingBytes { read, total } => write!(
                 f,
                 "trailing bytes after n-gram artifact: read {read} of {total}"
@@ -95,6 +104,9 @@ pub enum NgramEncodeError {
         len: usize,
         max: usize,
     },
+    InvalidFloat {
+        field: &'static str,
+    },
 }
 
 impl std::fmt::Display for NgramEncodeError {
@@ -104,6 +116,12 @@ impl std::fmt::Display for NgramEncodeError {
                 f,
                 "n-gram artifact field '{field}' is too large: {len} bytes/items, max {max}"
             ),
+            NgramEncodeError::InvalidFloat { field } => {
+                write!(
+                    f,
+                    "n-gram artifact field '{field}' contains a non-finite float"
+                )
+            }
         }
     }
 }
@@ -1454,8 +1472,8 @@ pub fn encode_compiled_language_data(
     let mut bytes = Vec::new();
     bytes.extend_from_slice(NGRAM_MAGIC);
     push_string(&mut bytes, "language_tag", compiled.language_tag.as_str())?;
-    bytes.extend_from_slice(&compiled.bigram_floor.to_le_bytes());
-    bytes.extend_from_slice(&compiled.trigram_floor.to_le_bytes());
+    push_f32(&mut bytes, "bigram_floor", compiled.bigram_floor)?;
+    push_f32(&mut bytes, "trigram_floor", compiled.trigram_floor)?;
     push_entries(&mut bytes, "bigrams", &compiled.bigrams)?;
     push_entries(&mut bytes, "trigrams", &compiled.trigrams)?;
     Ok(bytes)
@@ -1469,8 +1487,16 @@ fn push_entries(
     push_len(bytes, field, entries.len(), MAX_NGRAM_ENTRIES)?;
     for (key, score) in entries {
         push_string(bytes, field, key.as_str())?;
-        bytes.extend_from_slice(&score.to_le_bytes());
+        push_f32(bytes, field, *score)?;
     }
+    Ok(())
+}
+
+fn push_f32(bytes: &mut Vec<u8>, field: &'static str, value: f32) -> Result<(), NgramEncodeError> {
+    if !value.is_finite() {
+        return Err(NgramEncodeError::InvalidFloat { field });
+    }
+    bytes.extend_from_slice(&value.to_le_bytes());
     Ok(())
 }
 
@@ -1504,8 +1530,8 @@ fn decode_compiled_language_data(bytes: &[u8]) -> Result<CompiledLanguageData, N
     }
 
     let language_tag = reader.read_string("language_tag")?;
-    let bigram_floor = reader.read_f32()?;
-    let trigram_floor = reader.read_f32()?;
+    let bigram_floor = reader.read_f32("bigram_floor")?;
+    let trigram_floor = reader.read_f32("trigram_floor")?;
     let bigrams = reader.read_entries("bigrams")?;
     let trigrams = reader.read_entries("trigrams")?;
     reader.finish()?;
@@ -1536,7 +1562,7 @@ impl<'a> ArtifactReader<'a> {
         let len = self.read_len(field, MAX_NGRAM_ENTRIES)?;
         let mut entries = Vec::with_capacity(len.min(4096));
         for _ in 0..len {
-            entries.push((self.read_string(field)?, self.read_f32()?));
+            entries.push((self.read_string(field)?, self.read_f32(field)?));
         }
         Ok(entries)
     }
@@ -1564,11 +1590,15 @@ impl<'a> ArtifactReader<'a> {
         Ok(u32::from_le_bytes(array))
     }
 
-    fn read_f32(&mut self) -> Result<f32, NgramDecodeError> {
+    fn read_f32(&mut self, field: &'static str) -> Result<f32, NgramDecodeError> {
         let bytes = self.read_exact(4)?;
         let mut array = [0; 4];
         array.copy_from_slice(bytes);
-        Ok(f32::from_le_bytes(array))
+        let value = f32::from_le_bytes(array);
+        if !value.is_finite() {
+            return Err(NgramDecodeError::InvalidFloat { field });
+        }
+        Ok(value)
     }
 
     fn read_exact(&mut self, len: usize) -> Result<&'a [u8], NgramDecodeError> {
@@ -1695,7 +1725,8 @@ mod tests {
     use super::{
         CompiledLanguageData, DictionaryIndex, LanguagePack, LanguagePackManifest, PACK_DICT_FILE,
         PACK_DICT_PREFIX_FILE, PACK_FORMAT_VERSION, PACK_MANIFEST_FILE, PACK_NGRAMS_FILE,
-        dict_lookup, encode_compiled_language_data, encode_dictionary_index,
+        decode_compiled_language_data, dict_lookup, encode_compiled_language_data,
+        encode_dictionary_index,
     };
 
     #[test]
@@ -1791,6 +1822,27 @@ dict_prefix = "dict-prefix.bin"
 
         let error = LanguagePack::from_pack_dir(&dir).err().unwrap();
         assert!(error.to_string().contains("ngram artifact"));
+    }
+
+    #[test]
+    fn ngram_codec_rejects_non_finite_scores() {
+        let error = encode_compiled_language_data(&CompiledLanguageData {
+            language_tag: "xx".to_owned(),
+            bigrams: vec![("ab".to_owned(), f32::NAN)],
+            trigrams: vec![("abc".to_owned(), -0.1)],
+            bigram_floor: -5.0,
+            trigram_floor: -6.0,
+        })
+        .unwrap_err();
+        assert!(error.to_string().contains("non-finite float"));
+
+        let mut bytes = valid_ngram_bytes("xx");
+        let bigram_floor_offset = 8 + 4 + "xx".len();
+        bytes[bigram_floor_offset..bigram_floor_offset + 4]
+            .copy_from_slice(&f32::NAN.to_le_bytes());
+
+        let error = decode_compiled_language_data(&bytes).unwrap_err();
+        assert!(error.to_string().contains("non-finite float"));
     }
 
     #[test]
