@@ -1072,10 +1072,18 @@ secondary_input_source_id = "com.apple.keylayout.Ukrainian"
             home_default_with_environment(&environment),
             Some("/Users/example/.config/typeclaw/config.toml".into())
         );
-        assert!(
-            default_pack_dir_with_environment(&environment)
-                .unwrap()
-                .ends_with("TypeClaw/packs")
+        let pack_dir = default_pack_dir_with_environment(&environment).unwrap();
+
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            pack_dir,
+            std::path::PathBuf::from("/Users/example/Library/Application Support/TypeClaw/packs")
+        );
+
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(
+            pack_dir,
+            std::path::PathBuf::from("/Users/example/.local/share/typeclaw/packs")
         );
     }
 }
