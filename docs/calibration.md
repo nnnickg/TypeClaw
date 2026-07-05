@@ -25,6 +25,24 @@ Concrete embedded Ukrainian examples:
 |---|---|---|---|
 | `nels` | `туди` | English | acceptable ambiguity |
 
+## Apostrophe Words
+
+Secondary languages whose orthography uses the apostrophe (embedded Ukrainian:
+`п'ять`, `м'ясо`, `ім'я`) are a known blind spot for automatic switching:
+
+- The embedded alphabet excludes the apostrophe, so the data pipeline drops
+  apostrophe words from the dictionary and resets n-gram context at the
+  apostrophe. Such words can never gain dictionary or n-gram evidence.
+- Consequently the Grave key (which renders the apostrophe on the embedded
+  Ukrainian layout) is not listed in `punctuation_letter_keys`: its secondary
+  output is not a modeled letter, so it cannot contribute token evidence.
+
+Automatic switching for apostrophe words therefore does not fire; manual
+Option conversion is the escape hatch. Lifting this requires adding the
+apostrophe to the pack alphabet and rebuilding artifacts, which is a
+calibration decision with its own false-positive risks (English contractions
+share the same physical keys).
+
 ## Generated Eval
 
 `typeclaw eval --generated N` still checks:

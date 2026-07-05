@@ -304,6 +304,33 @@ mod tests {
     }
 
     #[test]
+    fn backspace_to_empty_restores_token_start_layout() {
+        let config = EngineConfig {
+            min_token_len: 1,
+            ..EngineConfig::default()
+        };
+        let mut engine = Engine::new(
+            config,
+            LanguageBundle::for_testing(&[("hello", 1000)], &[("ф", 1000)]),
+        );
+
+        let output = engine.observe(InputEvent::Letter(LetterEvent::new(PhysicalKey::A)));
+        assert_eq!(
+            output.action,
+            ObservationAction::SwitchFutureLayout(Layout::Secondary)
+        );
+        assert_eq!(engine.current_layout(), Layout::Secondary);
+
+        let output = engine.observe(InputEvent::Backspace);
+        assert_eq!(
+            output.action,
+            ObservationAction::SwitchFutureLayout(Layout::English)
+        );
+        assert_eq!(engine.current_layout(), Layout::English);
+        assert_eq!(engine.token_len(), 0);
+    }
+
+    #[test]
     fn manual_switch_changes_future_layout_and_resets_observed_token() {
         let mut engine = engine();
         for character in "type".chars() {

@@ -72,6 +72,11 @@ written against this file, not against CLI convenience behavior.
 - `SwitchFutureLayout` authorizes a boundary-sized host side effect: replace the
   currently tracked token with the Rust-rendered candidate for `layout`, then
   select the configured real keyboard input source for future keys.
+- The engine flips its inferred layout at the moment it emits
+  `SwitchFutureLayout`. A host that drops the authorized side effect (focus
+  change, new input, validation failure) must re-synchronize the engine with
+  the actual input source (`reset_layout`); otherwise the engine keeps scoring
+  against a layout the user is not typing in and never re-emits the switch.
 - `None` and `ResetToken` do not authorize document mutation.
 
 ## Switching Rules

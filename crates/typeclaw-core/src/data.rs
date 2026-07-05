@@ -20,7 +20,15 @@ pub const PACK_DICT_FILE: &str = "dict.fst";
 pub const PACK_DICT_PREFIX_FILE: &str = "dict-prefix.bin";
 const NGRAM_MAGIC: &[u8; 8] = b"TFNG0002";
 const DICT_PREFIX_MAGIC: &[u8; 8] = b"TFPX0001";
-const EMBEDDED_UKRAINIAN_PUNCTUATION_LETTER_KEYS: &str = "`[]\\;',.~{}|:\"<>";
+// Must stay equal to
+// `KeyboardMap::ukrainian_jcuken_osx().punctuation_letter_keys_against(english_us)`:
+// only keys whose secondary side renders an actual letter. The Grave key is
+// excluded — its Ukrainian output is the apostrophe, which is not a letter in
+// the embedded model (see docs/calibration.md).
+const EMBEDDED_UKRAINIAN_PUNCTUATION_LETTER_KEYS: &str = "[{]};:'\",<.>\\|";
+const EMBEDDED_SOURCE_CORPUS: &str = "OPUS OpenSubtitles2018 mono";
+const EMBEDDED_SOURCE_DICTIONARY: &str = "hermitdave/FrequencyWords 2018";
+const EMBEDDED_BUILD_ID: &str = "embedded";
 const MAX_NGRAM_STRING_BYTES: usize = 256;
 const MAX_NGRAM_ENTRIES: usize = 10_000_000;
 
@@ -610,9 +618,9 @@ impl LanguagePackManifest {
             ngrams: PathBuf::from(PACK_NGRAMS_FILE),
             dict: PathBuf::from(PACK_DICT_FILE),
             dict_prefix: PathBuf::from(PACK_DICT_PREFIX_FILE),
-            source_corpus: Some("OPUS OpenSubtitles2018 mono".to_owned()),
-            source_dictionary: Some("hermitdave/FrequencyWords 2018".to_owned()),
-            build_id: Some("embedded".to_owned()),
+            source_corpus: Some(EMBEDDED_SOURCE_CORPUS.to_owned()),
+            source_dictionary: Some(EMBEDDED_SOURCE_DICTIONARY.to_owned()),
+            build_id: Some(EMBEDDED_BUILD_ID.to_owned()),
             keyboard: None,
         }
     }
@@ -714,9 +722,9 @@ impl PackMetadata {
 
         Self {
             format_version: PACK_FORMAT_VERSION,
-            source_corpus: "OPUS OpenSubtitles2018 mono".to_owned(),
-            source_dictionary: "hermitdave/FrequencyWords 2018".to_owned(),
-            build_id: "embedded".to_owned(),
+            source_corpus: "unspecified".to_owned(),
+            source_dictionary: "unspecified".to_owned(),
+            build_id: "unspecified".to_owned(),
             ngram_bytes: ngram_bytes.len(),
             dict_bytes: dict_bytes.len(),
             dict_prefix_bytes: dict_prefix_bytes.len(),
@@ -1045,38 +1053,46 @@ impl LanguageBundle {
     /// The raw subtitle/frequency downloads are build-time inputs only. Runtime code should
     /// normally use this path so the CLI/macOS agent is self-contained.
     pub fn embedded() -> Result<Self, BundleError> {
-        let (en_ngrams, en_dict, en_dict_prefix) = Self::embedded_english_artifacts();
         let (secondary_ngrams, secondary_dict, secondary_dict_prefix) =
             Self::embedded_secondary_artifacts();
+        let mut secondary = LanguagePack::from_bytes_with_prefix_and_punctuation(
+            LanguagePackDescriptor {
+                id: "uk",
+                display_name: "Ukrainian",
+                script: "Cyrillic",
+                keyboard_layout: "ukrainian-jcuken-osx",
+                punctuation_letter_keys: EMBEDDED_UKRAINIAN_PUNCTUATION_LETTER_KEYS,
+                keyboard: KeyboardMap::ukrainian_jcuken_osx(),
+            },
+            secondary_ngrams,
+            DictionaryArtifacts {
+                dict: Cow::Borrowed(secondary_dict),
+                prefix: DictionaryPrefixBytes::Static(secondary_dict_prefix),
+            },
+        )?;
+        apply_embedded_metadata(&mut secondary.metadata);
         Ok(Self {
-            english: LanguagePack::from_bytes_with_prefix(
-                "en",
-                "English",
-                "Latin",
-                "english-us",
-                KeyboardMap::english_us(),
-                en_ngrams,
-                DictionaryArtifacts {
-                    dict: Cow::Borrowed(en_dict),
-                    prefix: DictionaryPrefixBytes::Static(en_dict_prefix),
-                },
-            )?,
-            secondary: LanguagePack::from_bytes_with_prefix_and_punctuation(
-                LanguagePackDescriptor {
-                    id: "uk",
-                    display_name: "Ukrainian",
-                    script: "Cyrillic",
-                    keyboard_layout: "ukrainian-jcuken-osx",
-                    punctuation_letter_keys: EMBEDDED_UKRAINIAN_PUNCTUATION_LETTER_KEYS,
-                    keyboard: KeyboardMap::ukrainian_jcuken_osx(),
-                },
-                secondary_ngrams,
-                DictionaryArtifacts {
-                    dict: Cow::Borrowed(secondary_dict),
-                    prefix: DictionaryPrefixBytes::Static(secondary_dict_prefix),
-                },
-            )?,
+            english: Self::embedded_english_pack()?,
+            secondary,
         })
+    }
+
+    fn embedded_english_pack() -> Result<LanguagePack, BundleError> {
+        let (en_ngrams, en_dict, en_dict_prefix) = Self::embedded_english_artifacts();
+        let mut english = LanguagePack::from_bytes_with_prefix(
+            "en",
+            "English",
+            "Latin",
+            "english-us",
+            KeyboardMap::english_us(),
+            en_ngrams,
+            DictionaryArtifacts {
+                dict: Cow::Borrowed(en_dict),
+                prefix: DictionaryPrefixBytes::Static(en_dict_prefix),
+            },
+        )?;
+        apply_embedded_metadata(&mut english.metadata);
+        Ok(english)
     }
 
     pub fn embedded_english_artifacts() -> (&'static [u8], &'static [u8], &'static [u8]) {
@@ -1207,20 +1223,8 @@ impl LanguageBundle {
             ));
         }
 
-        let (en_ngrams, en_dict, en_dict_prefix) = Self::embedded_english_artifacts();
         Ok(Self {
-            english: LanguagePack::from_bytes_with_prefix(
-                "en",
-                "English",
-                "Latin",
-                "english-us",
-                KeyboardMap::english_us(),
-                en_ngrams,
-                DictionaryArtifacts {
-                    dict: Cow::Borrowed(en_dict),
-                    prefix: DictionaryPrefixBytes::Static(en_dict_prefix),
-                },
-            )?,
+            english: Self::embedded_english_pack()?,
             secondary,
         })
     }
@@ -1375,6 +1379,12 @@ fn synthetic_fst(words: &[(&str, u64)]) -> fst::Map<Cow<'static, [u8]>> {
     }
     let bytes = builder.into_inner().unwrap();
     fst::Map::new(Cow::Owned(bytes)).unwrap()
+}
+
+fn apply_embedded_metadata(metadata: &mut PackMetadata) {
+    metadata.source_corpus = EMBEDDED_SOURCE_CORPUS.to_owned();
+    metadata.source_dictionary = EMBEDDED_SOURCE_DICTIONARY.to_owned();
+    metadata.build_id = EMBEDDED_BUILD_ID.to_owned();
 }
 
 fn require_non_empty(field: &str, value: &str) -> Result<(), BundleError> {
@@ -1755,6 +1765,17 @@ mod tests {
                 "{token}"
             );
         }
+    }
+
+    #[test]
+    fn embedded_ukrainian_punctuation_letter_keys_match_keyboard_maps() {
+        let computed = crate::KeyboardMap::ukrainian_jcuken_osx()
+            .punctuation_letter_keys_against(&crate::KeyboardMap::english_us());
+        assert_eq!(
+            super::EMBEDDED_UKRAINIAN_PUNCTUATION_LETTER_KEYS,
+            computed,
+            "embedded constant must match the computed punctuation-letter set"
+        );
     }
 
     #[test]

@@ -219,7 +219,7 @@ checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 
 [[package]]
 name = "typeclaw-core"
-version = "1.2.4"
+version = "1.2.5"
 dependencies = [
  "fst",
  "serde",
@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "typeclaw-ffi"
-version = "1.2.4"
+version = "1.2.5"
 dependencies = [
  "typeclaw-core",
  "typeclaw-host-config",
@@ -245,7 +245,7 @@ dependencies = [
 
 [[package]]
 name = "typeclaw-host-config"
-version = "1.2.4"
+version = "1.2.5"
 dependencies = [
  "serde",
  "toml",

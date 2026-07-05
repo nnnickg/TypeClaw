@@ -348,7 +348,15 @@ impl Engine {
         self.ngrams.pop();
         self.score_cache = None;
         if self.token.is_empty() {
+            let previous_layout = self.layout;
+            self.layout = self.token_start_layout;
             self.reset_token();
+            if self.layout != previous_layout {
+                return (
+                    ObservationAction::SwitchFutureLayout(self.layout),
+                    Decision::Keep,
+                );
+            }
             return (ObservationAction::ResetToken, Decision::Keep);
         }
         if self.host_context.automatic_switching_disabled {

@@ -143,6 +143,11 @@ private final class TypeClawAgent: NSObject {
     private var pendingOptionManualSwitch = false
     private var manualSwitchCancelled = false
     private var syncedInputSourceLayout: TypeClawLayout?
+    /// True while the engine has already flipped its inferred layout for a
+    /// `switchFutureLayout` action but the OS input-source selection has not
+    /// completed yet. Every path that drops that selection must re-sync the
+    /// engine with the real input source or the two diverge silently.
+    private var engineSwitchAwaitingSelection = false
     private var currentReplacementFocus: ReplacementFocus?
     private var inputSourceStateReady = false
     private var inputSourceObserverRegistered = false
@@ -420,9 +425,16 @@ private final class TypeClawAgent: NSObject {
             )
         }
 
-        cancelPendingReplacement(reason: "flagsChanged", clearsManualToggle: false)
-
         let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
+        // Shift and CapsLock alone never start a shortcut chord; cancelling on
+        // them would drop an in-flight token replacement scheduled a few
+        // events earlier (e.g. Shift pressed for the next capitalized word).
+        let isShiftLikeKey =
+            keyCode == kVK_Shift || keyCode == kVK_RightShift || keyCode == kVK_CapsLock
+        if !isShiftLikeKey {
+            cancelPendingReplacement(reason: "flagsChanged", clearsManualToggle: false)
+        }
+
         let isOptionKey = keyCode == kVK_Option || keyCode == kVK_RightOption
         guard isOptionKey else {
             manualReplacementToggle = nil
@@ -552,6 +564,7 @@ private final class TypeClawAgent: NSObject {
             if source == "manual", replacementPlan == nil {
                 replacementPlan = manualToggleReplacementPlan(to: layout)
             }
+            engineSwitchAwaitingSelection = true
             scheduleInputSourceSelection(
                 layout,
                 source: source,
@@ -596,6 +609,7 @@ private final class TypeClawAgent: NSObject {
         replacementGeneration capturedReplacementGeneration: UInt64
     ) {
         guard capturedReplacementGeneration == replacementGeneration else {
+            abandonPendingLayoutSwitch(reason: "selectionGenerationStale")
             return
         }
         if let replacementPlan,
@@ -613,11 +627,17 @@ private final class TypeClawAgent: NSObject {
                 isStillValid: { [weak self] in
                     self?.replacementFocusIsStillValid(replacementPlan.focus) ?? false
                 },
+                didAbandon: { [weak self] in
+                    self?.abandonPendingLayoutSwitch(reason: "replacementValidationFailed")
+                },
                 didPost: { [weak self] in
-                    guard let self,
-                          capturedReplacementGeneration == self.replacementGeneration,
+                    guard let self else {
+                        return
+                    }
+                    guard capturedReplacementGeneration == self.replacementGeneration,
                           self.replacementFocusIsStillValid(replacementPlan.focus)
                     else {
+                        self.abandonPendingLayoutSwitch(reason: "postGuardFailed")
                         return
                     }
                     if source == "manual" {
@@ -639,6 +659,7 @@ private final class TypeClawAgent: NSObject {
 
     @discardableResult
     private func selectFutureLayout(_ layout: TypeClawLayout, source: String) -> Bool {
+        engineSwitchAwaitingSelection = false
         let selected = measured("inputSource.selectForFuture.\(source)", thresholdMs: slowCallThresholdMs) {
             sourceSwitcher.selectForFuture(layout, reason: source)
         }
@@ -724,6 +745,7 @@ private final class TypeClawAgent: NSObject {
     @discardableResult
     private func syncLayoutWithCurrentInputSource() -> Bool {
         guard let layout = sourceSwitcher.currentLayout() else {
+            engineSwitchAwaitingSelection = false
             inputSourceStateReady = false
             syncedInputSourceLayout = nil
             engine.resetToken()
@@ -734,9 +756,25 @@ private final class TypeClawAgent: NSObject {
         guard layout != syncedInputSourceLayout else {
             return true
         }
+        engineSwitchAwaitingSelection = false
         syncedInputSourceLayout = layout
         engine.resetLayout(layout)
         return true
+    }
+
+    /// Called whenever a scheduled `switchFutureLayout` side effect is dropped
+    /// before `selectFutureLayout` ran. The engine already flipped its inferred
+    /// layout when it emitted the action, so force it back to the real OS
+    /// input source; otherwise the engine keeps scoring against a layout the
+    /// user is not typing in and never re-emits the switch.
+    private func abandonPendingLayoutSwitch(reason: String) {
+        guard engineSwitchAwaitingSelection else {
+            return
+        }
+        engineSwitchAwaitingSelection = false
+        logger.debug("abandoned pending layout switch reason=\(reason, privacy: .public)")
+        syncedInputSourceLayout = nil
+        _ = syncLayoutWithCurrentInputSource()
     }
 
     fileprivate func handleInputSourceChangedNotification() {
@@ -1421,6 +1459,7 @@ private final class TypeClawAgent: NSObject {
             manualReplacementToggle = nil
         }
         textReplacer.cancelPending(reason: reason)
+        abandonPendingLayoutSwitch(reason: reason)
     }
 
     private func cancelPendingInputSourceSelection(reason: String) {
@@ -1431,6 +1470,7 @@ private final class TypeClawAgent: NSObject {
         pendingInputSourceSelectionWorkItem?.cancel()
         pendingInputSourceSelectionWorkItem = nil
         logger.debug("pending input source selection cancelled reason=\(reason, privacy: .public)")
+        abandonPendingLayoutSwitch(reason: reason)
     }
 
     private func shouldBypassHost(_ flags: CGEventFlags) -> Bool {
@@ -1738,6 +1778,7 @@ private final class TextReplacer {
         deleteCount: Int,
         with text: String,
         isStillValid: @escaping () -> Bool,
+        didAbandon: @escaping () -> Void = {},
         didPost: @escaping () -> Void = {}
     ) {
         guard deleteCount > 0, !text.isEmpty else {
@@ -1752,10 +1793,14 @@ private final class TextReplacer {
             guard let self,
                   self.generation == scheduledGeneration
             else {
+                // A stale generation means the owner already cancelled (and
+                // re-synced) or superseded this replacement; stay silent so we
+                // do not clobber the newer in-flight switch.
                 return
             }
             guard isStillValid() else {
                 self.cancelPending(reason: "validationFailed")
+                didAbandon()
                 return
             }
 
@@ -1767,6 +1812,7 @@ private final class TextReplacer {
             }
             guard isStillValid() else {
                 self.cancelPending(reason: "postValidationFailed")
+                didAbandon()
                 return
             }
             measured("replacement.postUnicode.\(reason)", thresholdMs: slowCallThresholdMs) {
