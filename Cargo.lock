@@ -40,9 +40,9 @@ checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
 
 [[package]]
 name = "anyhow"
-version = "1.0.102"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "autocfg"
@@ -222,9 +222,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-epoch"
-version = "0.9.18"
+version = "0.9.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -1032,7 +1032,7 @@ checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 
 [[package]]
 name = "typeclaw-cli"
-version = "1.2.5"
+version = "1.2.6"
 dependencies = [
  "clap",
  "clap_complete",
@@ -1047,7 +1047,7 @@ dependencies = [
 
 [[package]]
 name = "typeclaw-core"
-version = "1.2.5"
+version = "1.2.6"
 dependencies = [
  "criterion",
  "fst",
@@ -1058,7 +1058,7 @@ dependencies = [
 
 [[package]]
 name = "typeclaw-data"
-version = "1.2.5"
+version = "1.2.6"
 dependencies = [
  "anyhow",
  "flate2",
@@ -1071,7 +1071,7 @@ dependencies = [
 
 [[package]]
 name = "typeclaw-ffi"
-version = "1.2.5"
+version = "1.2.6"
 dependencies = [
  "criterion",
  "typeclaw-core",
@@ -1080,7 +1080,7 @@ dependencies = [
 
 [[package]]
 name = "typeclaw-host-config"
-version = "1.2.5"
+version = "1.2.6"
 dependencies = [
  "serde",
  "toml",

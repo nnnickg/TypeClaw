@@ -94,6 +94,8 @@ The macOS target is an LSUIElement background agent plus Swift wrappers:
 - `TypeClawKit/HostConfig.swift` wraps opaque Rust config/policy.
 - `TypeClawKit/KeyCodeMap.swift` maps ANSI virtual keycodes to Rust physical
   key indices.
+- `TypeClawKit/TextReplacer.swift` owns the cancellable replacement transaction
+  and an injectable synthetic-event boundary used by deterministic Swift tests.
 - `TypeClawAgent/main.swift` installs a listen-only `CGEventTap`, observes
   keys, replaces switched tokens by selecting the previous tracked token and
   posting Unicode over that selection, and selects real macOS keyboard input
@@ -103,6 +105,8 @@ The macOS target is an LSUIElement background agent plus Swift wrappers:
   creating the event tap.
 - `TypeClawSmoke/main.swift` verifies the static archive and pass-through
   observer behavior.
+- `TypeClawKitTests/TextReplacerTests.swift` covers cancellation, focus
+  invalidation, and synthetic-event failure before transaction completion.
 
 The old compositor files are gone. There is no inline rendering path and no
 per-key direct-commit path.

@@ -5,6 +5,7 @@ import Foundation
 import IOKit
 import os
 import ServiceManagement
+import UserNotifications
 #if SWIFT_PACKAGE
 import TypeClawKit
 #endif
@@ -125,7 +126,7 @@ private final class TypeClawAgent: NSObject {
     private let hostConfig: TypeClawHostConfig
     private let engine: TypeClawEngine
     private let sourceSwitcher: InputSourceSwitcher
-    private let textReplacer = TextReplacer()
+    private let textReplacer = TypeClawTextReplacer()
     private let hostRefreshQueue = DispatchQueue(label: "io.github.nnnickg.typeclaw.host-refresh", qos: .utility)
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -1278,10 +1279,35 @@ private final class TypeClawAgent: NSObject {
         }
         inputMonitoringRevocationNotified = true
 
-        let notification = NSUserNotification()
-        notification.title = "TypeClaw Input Monitoring Disabled"
-        notification.informativeText = "Enable TypeClaw in System Settings > Privacy & Security > Input Monitoring, then restart TypeClaw if typing is not observed."
-        NSUserNotificationCenter.default.deliver(notification)
+        let content = UNMutableNotificationContent()
+        content.title = "TypeClaw Input Monitoring Disabled"
+        content.body = "Enable TypeClaw in System Settings > Privacy & Security > Input Monitoring, then restart TypeClaw if typing is not observed."
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert]) { granted, error in
+            if let error {
+                logger.error(
+                    "notification authorization failed: \(String(describing: error), privacy: .public)"
+                )
+                return
+            }
+            guard granted else {
+                logger.notice("notification authorization denied")
+                return
+            }
+            center.add(
+                UNNotificationRequest(
+                    identifier: "typeclaw-input-monitoring-revoked",
+                    content: content,
+                    trigger: nil
+                )
+            ) { error in
+                if let error {
+                    logger.error(
+                        "notification delivery failed: \(String(describing: error), privacy: .public)"
+                    )
+                }
+            }
+        }
         NSApplication.shared.requestUserAttention(.criticalRequest)
     }
 
@@ -1751,156 +1777,6 @@ private final class InputSourceSwitcher {
             return nil
         }
         return CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(value).takeUnretainedValue())
-    }
-}
-
-private final class TextReplacer {
-    private let logger = Logger(
-        subsystem: "io.github.nnnickg.typeclaw.agent",
-        category: "Replacement"
-    )
-    private let source = CGEventSource(stateID: .hidSystemState)
-    private var pendingWorkItem: DispatchWorkItem?
-    private var generation: UInt64 = 0
-
-    func cancelPending(reason: String) {
-        guard pendingWorkItem != nil else {
-            return
-        }
-        generation &+= 1
-        pendingWorkItem?.cancel()
-        pendingWorkItem = nil
-        logger.debug("cancelled pending replacement reason=\(reason, privacy: .public)")
-    }
-
-    func replaceLastToken(
-        reason: String,
-        deleteCount: Int,
-        with text: String,
-        isStillValid: @escaping () -> Bool,
-        didAbandon: @escaping () -> Void = {},
-        didPost: @escaping () -> Void = {}
-    ) {
-        guard deleteCount > 0, !text.isEmpty else {
-            return
-        }
-
-        cancelPending(reason: "superseded")
-        generation &+= 1
-        let scheduledGeneration = generation
-        let requestedAt = ProcessInfo.processInfo.systemUptime
-        let workItem = DispatchWorkItem { [weak self, source, logger] in
-            guard let self,
-                  self.generation == scheduledGeneration
-            else {
-                // A stale generation means the owner already cancelled (and
-                // re-synced) or superseded this replacement; stay silent so we
-                // do not clobber the newer in-flight switch.
-                return
-            }
-            guard isStillValid() else {
-                self.cancelPending(reason: "validationFailed")
-                didAbandon()
-                return
-            }
-
-            let workStarted = ProcessInfo.processInfo.systemUptime
-            // Queue replacement off the event-tap decision path so the
-            // triggering key can commit in the target app before selection.
-            measured("replacement.selectPrevious.\(reason)", thresholdMs: slowCallThresholdMs) {
-                Self.selectPreviousCharacters(deleteCount, source: source)
-            }
-            guard isStillValid() else {
-                self.cancelPending(reason: "postValidationFailed")
-                didAbandon()
-                return
-            }
-            measured("replacement.postUnicode.\(reason)", thresholdMs: slowCallThresholdMs) {
-                Self.postUnicode(text, source: source)
-            }
-            logPerformance(
-                name: "replacement.work.\(reason)",
-                started: workStarted,
-                thresholdMs: slowCallThresholdMs
-            )
-            logPerformance(
-                name: "replacement.decisionToPost.\(reason)",
-                started: requestedAt,
-                thresholdMs: slowCallThresholdMs
-            )
-            logger.notice(
-                "replaced token reason=\(reason, privacy: .public) deleteCount=\(deleteCount, privacy: .public) insertedUtf16=\(text.utf16.count, privacy: .public)"
-            )
-            didPost()
-            if self.generation == scheduledGeneration {
-                self.pendingWorkItem = nil
-            }
-        }
-        pendingWorkItem = workItem
-        DispatchQueue.main.async(execute: workItem)
-    }
-
-    private static func postKey(
-        virtualKey: CGKeyCode,
-        keyDown: Bool,
-        source: CGEventSource?,
-        flags: CGEventFlags = []
-    ) {
-        guard let event = CGEvent(
-            keyboardEventSource: source,
-            virtualKey: virtualKey,
-            keyDown: keyDown
-        ) else {
-            return
-        }
-        event.flags = flags
-        event.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
-        event.post(tap: .cghidEventTap)
-    }
-
-    private static func selectPreviousCharacters(_ count: Int, source: CGEventSource?) {
-        for _ in 0..<count {
-            postKey(
-                virtualKey: CGKeyCode(kVK_LeftArrow),
-                keyDown: true,
-                source: source,
-                flags: .maskShift
-            )
-            postKey(
-                virtualKey: CGKeyCode(kVK_LeftArrow),
-                keyDown: false,
-                source: source,
-                flags: .maskShift
-            )
-        }
-    }
-
-    private static func postUnicode(_ text: String, source: CGEventSource?) {
-        let units = Array(text.utf16)
-        guard !units.isEmpty,
-              let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
-        else {
-            return
-        }
-
-        keyDown.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
-        keyUp.setIntegerValueField(.eventSourceUserData, value: syntheticEventMarker)
-        units.withUnsafeBufferPointer { buffer in
-            guard let baseAddress = buffer.baseAddress else {
-                return
-            }
-            keyDown.keyboardSetUnicodeString(
-                stringLength: units.count,
-                unicodeString: baseAddress
-            )
-            keyUp.keyboardSetUnicodeString(
-                stringLength: units.count,
-                unicodeString: baseAddress
-            )
-        }
-        keyDown.post(tap: .cghidEventTap)
-        keyUp.post(tap: .cghidEventTap)
     }
 }
 

@@ -67,10 +67,11 @@ mod tests {
 
     fn engine() -> Engine {
         Engine::new(EngineConfig::default(), fixture_bundle())
+            .expect("default engine config must be valid")
     }
 
     fn engine_with_config(config: EngineConfig) -> Engine {
-        Engine::new(config, fixture_bundle())
+        Engine::new(config, fixture_bundle()).expect("test engine config must be valid")
     }
 
     fn physical_key_strategy() -> impl Strategy<Value = PhysicalKey> {
@@ -143,6 +144,18 @@ mod tests {
             .validate(),
             Err(EngineConfigError::InvalidFloat {
                 field: "confidence_margin",
+            })
+        );
+
+        let invalid = EngineConfig {
+            max_token_len: MAX_CONFIG_TOKEN_LEN + 1,
+            ..EngineConfig::default()
+        };
+        assert_eq!(
+            Engine::new(invalid, fixture_bundle()).err(),
+            Some(EngineConfigError::MaxTokenLenTooLarge {
+                value: MAX_CONFIG_TOKEN_LEN + 1,
+                max: MAX_CONFIG_TOKEN_LEN,
             })
         );
     }
@@ -259,7 +272,8 @@ mod tests {
                 &[("ill", 1000), ("input", 500), ("token", 300)],
                 &[("шєда", 5000), ("аєдд", 5000)],
             ),
-        );
+        )
+        .expect("default engine config must be valid");
         let mut final_action = ObservationAction::None;
         let mut final_decision = Decision::Keep;
         let mut final_score = None;
@@ -312,7 +326,8 @@ mod tests {
         let mut engine = Engine::new(
             config,
             LanguageBundle::for_testing(&[("hello", 1000)], &[("ф", 1000)]),
-        );
+        )
+        .expect("test engine config must be valid");
 
         let output = engine.observe(InputEvent::Letter(LetterEvent::new(PhysicalKey::A)));
         assert_eq!(
@@ -469,6 +484,7 @@ mod tests {
     #[test]
     fn long_tokens_reset_then_bypass_until_boundary() {
         let config = EngineConfig {
+            min_token_len: 3,
             max_token_len: 3,
             ..EngineConfig::default()
         };

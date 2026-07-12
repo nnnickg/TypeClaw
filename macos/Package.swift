@@ -27,7 +27,11 @@ let package = Package(
         .target(
             name: "TypeClawKit",
             dependencies: ["TypeClawFFI"],
-            path: "Sources/TypeClawKit"
+            path: "Sources/TypeClawKit",
+            linkerSettings: [
+                .linkedFramework("ApplicationServices"),
+                .linkedFramework("Carbon"),
+            ]
         ),
         .executableTarget(
             name: "TypeClawSmoke",
@@ -49,6 +53,15 @@ let package = Package(
                 .linkedFramework("Carbon"),
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("IOKit"),
+                .linkedFramework("UserNotifications"),
+            ]
+        ),
+        .testTarget(
+            name: "TypeClawKitTests",
+            dependencies: ["TypeClawKit"],
+            path: "Tests/TypeClawKitTests",
+            linkerSettings: [
+                .unsafeFlags(rustStaticLinkerFlags),
             ]
         ),
     ]

@@ -326,7 +326,8 @@ fn configured_pack_dir(config: &Config) -> Option<PathBuf> {
 fn build_engine(config: &Config) -> Result<Engine, String> {
     let resolved = resolve_runtime_config(config)?;
     let bundle = resolved.load_language_bundle()?;
-    Ok(Engine::with_shared_bundle(resolved.engine, bundle))
+    Engine::with_shared_bundle(resolved.engine, bundle)
+        .map_err(|error| format!("invalid engine config: {error}"))
 }
 
 fn resolve_runtime_config(config: &Config) -> Result<ResolvedHostConfig, String> {

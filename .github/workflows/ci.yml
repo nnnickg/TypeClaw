@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Toolchain
         run: |
@@ -34,7 +34,7 @@ jobs:
           rustc --version
 
       - name: Cache
-        uses: Swatinem/rust-cache@v2.8.1
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
 
       - name: Test
         run: cargo test --workspace --locked
@@ -49,10 +49,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Cache
-        uses: Swatinem/rust-cache@v2.8.1
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
 
       - name: Install Coverage Tool
         run: cargo install cargo-llvm-cov --version 0.8.6 --locked
@@ -67,7 +67,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Toolchain
         run: |
@@ -78,7 +78,7 @@ jobs:
           xcodebuild -version
 
       - name: Cache
-        uses: Swatinem/rust-cache@v2.8.1
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
 
       - name: Install Cargo Tools
         run: |
@@ -120,6 +120,7 @@ jobs:
 
       - name: SwiftPM Build
         run: |
+          CARGO_TARGET_DIR="$PWD/target" RUST_PROFILE=release xcrun swift test --package-path macos -c release
           CARGO_TARGET_DIR="$PWD/target" RUST_PROFILE=release xcrun swift run --package-path macos -c release typeclaw-staticlib-smoke
           CARGO_TARGET_DIR="$PWD/target" RUST_PROFILE=release xcrun swift build --package-path macos -c release --product TypeClaw
 

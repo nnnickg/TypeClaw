@@ -898,9 +898,10 @@ impl LanguagePack {
         let manifest = LanguagePackManifest::read_from_dir(pack_dir)?;
         let keyboard = manifest.keyboard_map()?;
         let (ngrams_path, dict_path, dict_prefix_path) = manifest.artifact_paths(pack_dir)?;
-        reject_symlink(&ngrams_path, "ngram artifact")?;
-        reject_symlink(&dict_path, "dictionary artifact")?;
-        reject_symlink(&dict_prefix_path, "dictionary prefix artifact")?;
+        let ngrams_path = contained_pack_file(pack_dir, &ngrams_path, "ngram artifact")?;
+        let dict_path = contained_pack_file(pack_dir, &dict_path, "dictionary artifact")?;
+        let dict_prefix_path =
+            contained_pack_file(pack_dir, &dict_prefix_path, "dictionary prefix artifact")?;
         let ngrams = fs::read(&ngrams_path)?;
         let dict_bytes = fs::read(&dict_path)?;
         let dict_prefix_bytes = fs::read(&dict_prefix_path)?;
@@ -1476,6 +1477,19 @@ fn reject_symlink(path: &Path, label: &str) -> Result<(), BundleError> {
     Ok(())
 }
 
+fn contained_pack_file(pack_dir: &Path, path: &Path, label: &str) -> Result<PathBuf, BundleError> {
+    reject_symlink(path, label)?;
+    let canonical_pack_dir = fs::canonicalize(pack_dir)?;
+    let canonical_path = fs::canonicalize(path)?;
+    if !canonical_path.starts_with(&canonical_pack_dir) || canonical_path == canonical_pack_dir {
+        return Err(BundleError::InvalidPack(format!(
+            "{label} must stay inside the pack directory: {}",
+            path.display()
+        )));
+    }
+    Ok(canonical_path)
+}
+
 pub fn encode_compiled_language_data(
     compiled: &CompiledLanguageData,
 ) -> Result<Vec<u8>, NgramEncodeError> {
@@ -1797,6 +1811,42 @@ dict_prefix = "dict-prefix.bin"
         .unwrap();
 
         let error = LanguagePackManifest::read_from_dir(&dir).unwrap_err();
+        assert!(error.to_string().contains("stay inside the pack directory"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pack_loader_rejects_artifacts_reached_through_escaping_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let dir = temp_pack_dir("escaping-symlink");
+        let outside = temp_pack_dir("escaping-symlink-outside");
+        fs::write(outside.join(PACK_NGRAMS_FILE), valid_ngram_bytes("xx")).unwrap();
+        fs::write(outside.join(PACK_DICT_FILE), valid_fst_bytes()).unwrap();
+        fs::write(
+            outside.join(PACK_DICT_PREFIX_FILE),
+            valid_dict_prefix_bytes(),
+        )
+        .unwrap();
+        symlink(&outside, dir.join("artifacts")).unwrap();
+        fs::write(
+            dir.join(PACK_MANIFEST_FILE),
+            format!(
+                r#"
+format_version = {PACK_FORMAT_VERSION}
+id = "xx"
+display_name = "Test"
+script = "Latin"
+layout = "english-us"
+ngrams = "artifacts/{PACK_NGRAMS_FILE}"
+dict = "artifacts/{PACK_DICT_FILE}"
+dict_prefix = "artifacts/{PACK_DICT_PREFIX_FILE}"
+"#
+            ),
+        )
+        .unwrap();
+
+        let error = LanguagePack::from_pack_dir(&dir).err().unwrap();
         assert!(error.to_string().contains("stay inside the pack directory"));
     }
 

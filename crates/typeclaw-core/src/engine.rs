@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::data::{LanguageBundle, LanguageModel};
 use crate::score::{NgramTotals, has_dictionary_evidence, score_layout, score_layout_with_ngrams};
 use crate::{
-    Decision, EngineConfig, HostContext, InputEvent, Layout, LayoutCandidates, LetterEvent,
-    MAX_CONFIG_TOKEN_LEN, ObservationAction, ObservationOutput, ScoreAnalysis,
+    Decision, EngineConfig, EngineConfigError, HostContext, InputEvent, Layout, LayoutCandidates,
+    LetterEvent, MAX_CONFIG_TOKEN_LEN, ObservationAction, ObservationOutput, ScoreAnalysis,
 };
 
 pub struct Engine {
@@ -111,13 +111,17 @@ impl RollingNgrams {
 }
 
 impl Engine {
-    pub fn new(config: EngineConfig, bundle: LanguageBundle) -> Self {
+    pub fn new(config: EngineConfig, bundle: LanguageBundle) -> Result<Self, EngineConfigError> {
         Self::with_shared_bundle(config, Arc::new(bundle))
     }
 
-    pub fn with_shared_bundle(config: EngineConfig, bundle: Arc<LanguageBundle>) -> Self {
+    pub fn with_shared_bundle(
+        config: EngineConfig,
+        bundle: Arc<LanguageBundle>,
+    ) -> Result<Self, EngineConfigError> {
+        config.validate()?;
         let token_capacity = config.max_token_len.min(MAX_CONFIG_TOKEN_LEN);
-        Self {
+        Ok(Self {
             config,
             bundle,
             token: Vec::with_capacity(token_capacity),
@@ -132,7 +136,7 @@ impl Engine {
             token_start_layout: Layout::English,
             bypass_until_boundary: false,
             host_context: HostContext::default(),
-        }
+        })
     }
 
     pub fn current_layout(&self) -> Layout {

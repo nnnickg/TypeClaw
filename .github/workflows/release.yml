@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout Release Tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
 
@@ -51,7 +51,7 @@ jobs:
         run: ./scripts/verify-release-version.sh "$RELEASE_TAG"
 
       - name: Cache
-        uses: Swatinem/rust-cache@v2.8.1
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
           shared-key: release-macos
 

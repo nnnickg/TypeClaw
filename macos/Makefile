@@ -45,7 +45,8 @@ SMOKE_SOURCES := $(KIT_SOURCES) $(wildcard Sources/TypeClawSmoke/*.swift)
 AGENT_SOURCES := $(KIT_SOURCES) $(wildcard Sources/TypeClawAgent/*.swift)
 SWIFT_COMMON_FLAGS := $(SWIFT_OPT_FLAGS) -module-cache-path $(MODULE_CACHE_DIR) -I $(FFI_INCLUDE_DIR)
 RUST_LINK_FLAGS := -Xlinker -force_load -Xlinker $(RUST_STATICLIB)
-AGENT_FRAMEWORK_FLAGS := -framework AppKit -framework ApplicationServices -framework Carbon -framework ServiceManagement -framework IOKit
+AGENT_FRAMEWORK_FLAGS := -framework AppKit -framework ApplicationServices -framework Carbon -framework ServiceManagement -framework IOKit -framework UserNotifications
+KIT_FRAMEWORK_FLAGS := -framework ApplicationServices -framework Carbon
 
 .PHONY: all rust-staticlib smoke swift-package check-adhoc-codesign bundle release-universal install-user clean
 
@@ -56,7 +57,7 @@ rust-staticlib:
 
 $(SMOKE_BIN): $(SMOKE_SOURCES) TypeClawFFI/include/module.modulemap TypeClawFFI/include/typeclaw_shim.h rust-staticlib
 	mkdir -p $(BUILD_DIR) $(MODULE_CACHE_DIR)
-	$(SWIFTC) $(SWIFT_COMMON_FLAGS) $(SMOKE_SOURCES) $(RUST_LINK_FLAGS) -o $(SMOKE_BIN)
+	$(SWIFTC) $(SWIFT_COMMON_FLAGS) $(SMOKE_SOURCES) $(RUST_LINK_FLAGS) $(KIT_FRAMEWORK_FLAGS) -o $(SMOKE_BIN)
 
 smoke: $(SMOKE_BIN)
 	$(SMOKE_BIN)

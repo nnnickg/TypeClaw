@@ -260,6 +260,16 @@ cargo install cargo-llvm-cov --version 0.8.6 --locked
 cargo llvm-cov -p typeclaw-core --locked --summary-only --fail-under-lines 40
 ```
 
+## macOS Transaction Tests
+
+Build the release Rust static library before running SwiftPM tests:
+
+```sh
+cargo build --release --locked -p typeclaw-ffi
+CARGO_TARGET_DIR="$PWD/target" RUST_PROFILE=release \
+  xcrun swift test --package-path macos -c release
+```
+
 ## Fuzz Target Build
 
 The fuzz harnesses are kept outside the main workspace and compile with their

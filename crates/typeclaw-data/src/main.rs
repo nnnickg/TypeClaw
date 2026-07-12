@@ -605,7 +605,10 @@ fn cache_name_for_url(id: &str, kind: &str, url: &str) -> String {
             }
         })
         .collect::<String>();
-    format!("{id}-{kind}-{leaf}")
+    let mut hasher = Sha256::new();
+    hasher.update(url.as_bytes());
+    let digest = hasher.finalize_hex();
+    format!("{id}-{kind}-{}-{leaf}", &digest[..16])
 }
 
 fn build_language(
@@ -1456,9 +1459,9 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        NgramCounts, Normalizer, Sha256, TextFilter, compile_ngrams, count_ngram_lines,
-        count_normalized_ngrams, encode_bigram, encode_compiled_language_data, encode_trigram,
-        validate_pack_id,
+        NgramCounts, Normalizer, Sha256, TextFilter, cache_name_for_url, compile_ngrams,
+        count_ngram_lines, count_normalized_ngrams, encode_bigram, encode_compiled_language_data,
+        encode_trigram, validate_pack_id,
     };
 
     #[test]
@@ -1475,6 +1478,19 @@ mod tests {
         assert_eq!(
             abc.finalize_hex(),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn cache_names_include_the_complete_source_url() {
+        let first = cache_name_for_url("xx", "corpus", "https://one.example/data.txt");
+        let second = cache_name_for_url("xx", "corpus", "https://two.example/data.txt");
+
+        assert_ne!(first, second);
+        assert!(first.ends_with("-data.txt"));
+        assert_eq!(
+            first,
+            cache_name_for_url("xx", "corpus", "https://one.example/data.txt")
         );
     }
 

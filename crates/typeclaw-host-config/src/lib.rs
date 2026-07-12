@@ -44,7 +44,7 @@ const TERMINAL_SURFACE_MARKERS: &[&str] = &[
 ];
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub engine: EngineSection,
     pub language: LanguageSection,
@@ -55,7 +55,7 @@ pub struct Config {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct EngineSection {
     pub min_token_len: usize,
     pub max_token_len: usize,
@@ -105,7 +105,7 @@ impl From<EngineSection> for EngineConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct LanguageSection {
     pub secondary: String,
 }
@@ -119,13 +119,13 @@ impl Default for LanguageSection {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct PacksSection {
     pub directory: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct AppsSection {
     pub disable_bundle_ids: Vec<String>,
     #[serde(alias = "exclude_bundle_ids")]
@@ -133,14 +133,14 @@ pub struct AppsSection {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct MacOSSection {
     pub english_input_source_id: Option<String>,
     pub secondary_input_source_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct DataSection {
     pub directory: Option<PathBuf>,
 }
@@ -738,6 +738,21 @@ exclude_bundle_ids = ["com.example.Editor"]
 
         assert!(!policy.disables_bundle("com.example.Editor"));
         assert!(policy.disables_automatic_processing("com.example.Editor"));
+    }
+
+    #[test]
+    fn config_rejects_unknown_root_and_section_fields() {
+        let root_error = toml::from_str::<Config>("unknown = true").unwrap_err();
+        assert!(root_error.to_string().contains("unknown field"));
+
+        let section_error = toml::from_str::<Config>(
+            r#"
+[apps]
+disable_bundle_id = ["com.example.Editor"]
+"#,
+        )
+        .unwrap_err();
+        assert!(section_error.to_string().contains("disable_bundle_id"));
     }
 
     #[test]

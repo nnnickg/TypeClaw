@@ -136,6 +136,7 @@ fn engine() -> Engine {
         EngineConfig::default(),
         LanguageBundle::embedded().expect("embedded language bundle should load"),
     )
+    .expect("default engine config should be valid")
 }
 
 criterion_group!(benches, bench_engine);

@@ -379,8 +379,11 @@ fn new_engine(bundle: Arc<LanguageBundle>, config: TcEngineConfig) -> *mut TcEng
     let Some(config) = engine_config_from_ffi(config) else {
         return std::ptr::null_mut();
     };
+    let Ok(engine) = Engine::with_shared_bundle(config, bundle) else {
+        return std::ptr::null_mut();
+    };
     Box::into_raw(Box::new(TcEngine {
-        engine: Engine::with_shared_bundle(config, bundle),
+        engine,
         pending_replacement: None,
     }))
 }
@@ -1272,7 +1275,14 @@ pub unsafe extern "C" fn typeclaw_engine_pending_replacement_inverse_utf8_len(
 
 fn copy_utf8_to_c_buffer(bytes: &[u8], out_utf8: *mut c_char, out_utf8_capacity: usize) {
     if !out_utf8.is_null() && out_utf8_capacity > 0 {
-        let copy_len = bytes.len().min(out_utf8_capacity.saturating_sub(1));
+        let mut copy_len = bytes.len().min(out_utf8_capacity.saturating_sub(1));
+        while copy_len > 0
+            && bytes
+                .get(copy_len)
+                .is_some_and(|byte| byte & 0b1100_0000 == 0b1000_0000)
+        {
+            copy_len -= 1;
+        }
         unsafe {
             ptr::copy_nonoverlapping(bytes.as_ptr(), out_utf8.cast::<u8>(), copy_len);
             *out_utf8.add(copy_len) = 0;
@@ -1426,7 +1436,7 @@ mod tests {
         TC_LAYOUT_SECONDARY, TC_MOD_COMMAND, TC_MOD_CONTROL, TC_MOD_OPTION, TC_MOD_SHIFT,
         TC_OBSERVATION_NONE, TC_OBSERVATION_RESET_TOKEN, TC_OBSERVATION_SWITCH_FUTURE_LAYOUT,
         TcEngineConfig, TcEvent, TcHostInputPolicy, TcHostSurfaceFacts, TcObservation,
-        decode_event, default_ffi_config, engine_config_from_ffi,
+        copy_utf8_to_c_buffer, decode_event, default_ffi_config, engine_config_from_ffi,
         typeclaw_engine_copy_pending_replacement_inverse_utf8, typeclaw_engine_current_layout,
         typeclaw_engine_default_config, typeclaw_engine_force_switch_layout, typeclaw_engine_free,
         typeclaw_engine_new_embedded_with_config, typeclaw_engine_new_from_host_config,
@@ -1468,6 +1478,31 @@ mod tests {
         });
 
         assert_eq!(input, None);
+    }
+
+    #[test]
+    fn truncated_c_buffer_text_stays_valid_utf8() {
+        let mut split_buffer = [0i8; 2];
+        copy_utf8_to_c_buffer(
+            "éx".as_bytes(),
+            split_buffer.as_mut_ptr(),
+            split_buffer.len(),
+        );
+        assert_eq!(
+            unsafe { CStr::from_ptr(split_buffer.as_ptr()) }.to_bytes(),
+            b""
+        );
+
+        let mut boundary_buffer = [0i8; 3];
+        copy_utf8_to_c_buffer(
+            "éx".as_bytes(),
+            boundary_buffer.as_mut_ptr(),
+            boundary_buffer.len(),
+        );
+        assert_eq!(
+            unsafe { CStr::from_ptr(boundary_buffer.as_ptr()) }.to_str(),
+            Ok("é")
+        );
     }
 
     #[test]
